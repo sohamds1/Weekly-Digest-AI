@@ -1,0 +1,4 @@
+google-generativeai
+youtube-transcript-api
+PyGithub
+scrapetube

@@ -1,0 +1,35 @@
+name: Weekly Newsletter Digest
+
+permissions:
+  contents: read
+  issues: write
+# ----------------------
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Digest Script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLAYLIST_ID: 'PLvAgMl0yz1t16OrFMWiHx-Y3GpND3wmVs' # <--- PASTE YOUR ID HERE
+        run: python main.py
