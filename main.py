@@ -38,34 +38,33 @@ def get_transcripts(video_ids):
     
     for video_id in video_ids:
         try:
-            # --- NEW API LOGIC (2025 FIX) ---
-            # 1. Get the list of all available transcripts for the video
+            # THE FIX: Use list_transcripts to find ANY English version (Auto or Manual)
             transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
             
-            # 2. Try to find English (Manual or Auto)
-            transcript_obj = None
+            # This logic says: "Find English. If manual doesn't exist, give me the Auto-generated one."
+            # It looks for 'en' (Standard English), 'en-US', or 'en-GB'
+            transcript = transcript_list.find_transcript(['en', 'en-US', 'en-GB'])
             
-            try:
-                # Priority A: Manual English
-                transcript_obj = transcript_list.find_manually_created_transcript(['en', 'en-US', 'en-GB'])
-            except:
-                try:
-                    # Priority B: Auto-generated English
-                    transcript_obj = transcript_list.find_generated_transcript(['en', 'en-US', 'en-GB'])
-                except:
-                    # Priority C: Fallback to the very first available transcript (any language)
-                    print(f"No English found for {video_id}, trying fallback language...")
-                    transcript_obj = next(iter(transcript_list))
-
-            # 3. Fetch the actual text
-            if transcript_obj:
-                transcript = transcript_obj.fetch()
-                formatted = formatter.format_transcript(transcript)
-                transcript_text += f"\n\n--- VIDEO ID: {video_id} ---\n{formatted}"
-                print(f"✅ Success: {video_id}")
+            # Fetch the actual text
+            final_data = transcript.fetch()
+            formatted = formatter.format_transcript(final_data)
+            
+            transcript_text += f"\n\n--- VIDEO ID: {video_id} ---\n{formatted}"
+            print(f"✅ Success: {video_id} (Type: {'Manual' if not transcript.is_generated else 'Auto-Generated'})")
             
         except Exception as e:
-            print(f"⚠️ Skipped {video_id}: {e}")
+            # If English fails, we try one last desperation move: The default translation
+            print(f"⚠️ Primary English failed for {video_id}, trying generic auto-caption...")
+            try:
+                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                # Just get the first available one (even if it's auto-generated English)
+                transcript = next(iter(transcript_list))
+                final_data = transcript.fetch()
+                formatted = formatter.format_transcript(final_data)
+                transcript_text += f"\n\n--- VIDEO ID: {video_id} ---\n{formatted}"
+                print(f"✅ Success (Fallback): {video_id}")
+            except:
+                print(f"❌ Totally Failed {video_id}: {e}")
             
     return transcript_text
 
@@ -90,12 +89,16 @@ def summarize_with_gemini(text):
     {text}
     """
     
-    response = model.generate_content(prompt)
-    return response.text
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        print(f"Gemini Error: {e}")
+        return "Error generating summary."
 
 def create_github_issue(content):
-    if not content:
-        print("No content to publish.")
+    if not content or content == "Error generating summary.":
+        print("No valid content to publish.")
         return
 
     g = Github(GITHUB_TOKEN)
@@ -121,12 +124,9 @@ if __name__ == "__main__":
 
     # 3. Summarize
     print("Summarizing...")
-    try:
-        summary = summarize_with_gemini(full_text)
-        
-        # 4. Post Issue
-        print("Posting to GitHub...")
-        create_github_issue(summary)
-        print("Done!")
-    except Exception as e:
-        print(f"Error during summarization: {e}")
+    summary = summarize_with_gemini(full_text)
+    
+    # 4. Post Issue
+    print("Posting to GitHub...")
+    create_github_issue(summary)
+    print("Done!")
