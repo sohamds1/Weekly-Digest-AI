@@ -14,26 +14,18 @@ GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 REPO_NAME = os.environ.get("GITHUB_REPOSITORY")
 
 def get_video_ids_from_playlist(playlist_id):
-    # THE FIX: Use YouTube's hidden RSS feed instead of scraping.
-    # This works for Public and Unlisted playlists and is much more stable.
+    # Use RSS feed to get video IDs (Works for Unlisted/Public)
     rss_url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
-    
     try:
         response = requests.get(rss_url)
-        response.raise_for_status() # Check for errors (like 404/Private)
-        
-        # Parse the XML
+        response.raise_for_status()
         root = ET.fromstring(response.content)
-        ns = {'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/', 'atom': 'http://www.w3.org/2005/Atom'}
-        
+        ns = {'yt': 'http://www.youtube.com/xml/schemas/2015', 'atom': 'http://www.w3.org/2005/Atom'}
         video_ids = []
-        # The RSS feed returns the last 15 videos. Perfect for a weekly digest.
         for entry in root.findall('atom:entry', ns):
             video_id = entry.find('yt:videoId', ns).text
             video_ids.append(video_id)
-            
         return video_ids
-
     except Exception as e:
         print(f"Error fetching playlist: {e}")
         return []
@@ -46,14 +38,34 @@ def get_transcripts(video_ids):
     
     for video_id in video_ids:
         try:
-            # We fetch the transcript
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
-            formatted = formatter.format_transcript(transcript)
-            transcript_text += f"\n\n--- VIDEO ID: {video_id} ---\n{formatted}"
-            print(f"✅ Success: {video_id}")
+            # --- NEW API LOGIC (2025 FIX) ---
+            # 1. Get the list of all available transcripts for the video
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            
+            # 2. Try to find English (Manual or Auto)
+            transcript_obj = None
+            
+            try:
+                # Priority A: Manual English
+                transcript_obj = transcript_list.find_manually_created_transcript(['en', 'en-US', 'en-GB'])
+            except:
+                try:
+                    # Priority B: Auto-generated English
+                    transcript_obj = transcript_list.find_generated_transcript(['en', 'en-US', 'en-GB'])
+                except:
+                    # Priority C: Fallback to the very first available transcript (any language)
+                    print(f"No English found for {video_id}, trying fallback language...")
+                    transcript_obj = next(iter(transcript_list))
+
+            # 3. Fetch the actual text
+            if transcript_obj:
+                transcript = transcript_obj.fetch()
+                formatted = formatter.format_transcript(transcript)
+                transcript_text += f"\n\n--- VIDEO ID: {video_id} ---\n{formatted}"
+                print(f"✅ Success: {video_id}")
+            
         except Exception as e:
-            # Often videos don't have captions. We skip them without crashing.
-            print(f"⚠️ Skipped {video_id} (No captions or error): {e}")
+            print(f"⚠️ Skipped {video_id}: {e}")
             
     return transcript_text
 
@@ -98,7 +110,7 @@ if __name__ == "__main__":
     
     if not video_ids:
         print("No videos found. Check if Playlist is Private or Empty.")
-        exit() # Exit cleanly
+        exit()
 
     # 2. Get Transcripts
     full_text = get_transcripts(video_ids)
