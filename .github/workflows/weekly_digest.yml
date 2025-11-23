@@ -31,5 +31,5 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PLAYLIST_ID: 'PLvAgMl0yz1t16OrFMWiHx-Y3GpND3wmVs' # <--- PASTE YOUR ID HERE
+          PLAYLIST_ID: 'PLoROMvodv4rOaMFbaqxPDoLWjDaRAdP9D' # <--- PASTE YOUR ID HERE
         run: python main.py
